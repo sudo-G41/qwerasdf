@@ -1,0 +1,87 @@
+import groovy.transform.Field
+
+def GIT_URL = "https://github.com/Goorm3Team/GroomBank-FrontEnd"
+def GIT_BRANCH = "main"
+def ECR_URL = "580103579984.dkr.ecr.ap-northeast-2.amazonaws.com/goorm3team/goormbank"
+
+@Field def CONTAINER_PORT = 8080
+
+@Field def REVISION = ""
+
+pipeline {
+    agent any
+    tools {nodejs "NodeJS 18.3.0"}
+    environment {
+        PATH = "$PATH"
+    }
+    stages {
+        stage('Webpack Build') {           
+            steps {            
+                script {
+                    try {
+
+                        sh "npm install"
+                        sh "npm run build"
+                        env.webpackBuildResult = true
+                        
+                    } catch(Exception e) {
+                        print(e)
+                        cleanWs()
+                        currentBuild.result = 'FAILURE'
+                    }
+                }
+            }
+        }
+        stage('Dockerizing') {
+            when {
+                expression {
+                    return env.webpackBuildResult ==~ /(?i)(Y|YES|T|TRUE|ON|RUN)/
+                }
+            }
+            steps {
+                script {
+                    try {
+
+                        sh 'rm  ~/.dockercfg || true'
+                        sh 'rm ~/.docker/config.json || true'
+
+                        print('==== ECR Login ====')
+                        sh "aws ecr get-login --region ap-northeast-2 --no-include-email | sh"
+
+                        print('==== Docker Build ====')
+                        sh "docker image build -t ${ECR_URL}:Frontend${BUILD_NUMBER} ."
+
+                        print('==== Docker Push ====')
+                        sh "docker push ${ECR_URL}:Frontend${BUILD_NUMBER}"
+
+                        print('==== Docker Remove Image ====')
+                        sh "docker image rm ${ECR_URL}:Frontend${BUILD_NUMBER}"
+
+                        env.dockerizingResult = true
+
+                    } catch(Exception e) {
+                        print(e)
+                        cleanWs()
+                        currentBuild.result = 'FAILURE'
+                    }
+                }
+            }
+        }
+        
+        stage('Manifest Update') {
+            steps {
+                print("===update===")
+                sh "sh /var/lib/jenkins/workspace/cicd/imageupdate.sh ${BUILD_NUMBER}"
+            }
+            post {
+                failure {
+                  echo 'Manifest Update failure !'
+                }
+                success {
+                  echo 'Manifest Update success !'
+                }
+            }
+        }
+        
+    }
+}
