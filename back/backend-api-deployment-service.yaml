@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: goormbank-api-app
+  namespace: backend-app
+  labels:
+    app: goormbank-api-app
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: goormbank-api-app
+  template:
+    metadata:
+      labels:
+        app: goormbank-api-app
+    spec:
+      containers:
+        - name: spring-boot
+          image: 580103579984.dkr.ecr.ap-northeast-2.amazonaws.com/goorm3team/goormbank:Backend73
+          env:
+            - name: spring.profiles.active
+              value: prod
+          ports:
+            - name: boot-port
+              containerPort: 8080
+          readinessProbe:
+            tcpSocket:
+              port: boot-port
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: boot-port
+          startupProbe:
+            httpGet:
+              path: /
+              port: boot-port
+            failureThreshold: 30
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: goormbank-api-service
+  namespace: backend-app
+  labels:
+    app: goormbank-api-app
+spec:
+  type: LoadBalancer
+  selector:
+    app: goormbank-api-app
+  ports:
+    - name: http
+      port: 80
+      protocol: TCP
+      targetPort: 8080
